@@ -1,51 +1,29 @@
-# TOKEN_TG = "1444339635:XXXXX-.."
-# TOKEN_TG = "1444339635:AAEWaQQmfy-Guk47iioxwIDiT7lbL5h5z-I"
-import redis
 import os
+import redis
+from my_config import TOKEN_TG, header_apikey, TOKEN_TRANSLATE
 
-# # ------ Для alwaysdata --------------------
-# TOKEN_TG = os.environ['TOKEN_TG']
-# headers = {"apikey": os.environ["apikey"]}
-#
-# red = redis.Redis(
-#     host=os.environ['redis_host'],
-#     port=10181,
-#     password=os.environ['redis_password']
-# )
-# --------------
-# red = redis.Redis(
-#     host='redis-10181.c250.eu-central-1-1.ec2.cloud.redislabs.com',
-#     port=10181,
-#     password='HuVRdjl0mauP6yBJvhJDsZGBa4KdQYDo'
-# )
-# ---------------------
+local_launch = True
 
-# TOKEN_TG_ser = "6065866125:AAHTL1GJA-yyO-2tZma5mD-SAFlKg63HHSc"
-TOKEN_TG = "6189775277:AAEMeeJKvor6PUbywS1UV76cqjWLQbPe0T4"
-
-headers = {
-  # "apikey": "wXXXXXX.."
-  "apikey": "wr4DkR1tK5Klzvnsh61PWAVuxM8SxmSM"
-}
-
-TOKEN_TRANSLATE = "xxxxx"
-
-my_redis = redis.Redis(
-    host='127.0.0.1',
-    port=6379
-)
+if local_launch:   # secrets from my_config (not included in the repository)
+    TOKEN_TG = TOKEN_TG
+    header_api = {"apikey": header_apikey}  # header apikey for convert
+    my_redis = redis.Redis(host='127.0.0.1', port=6379)
+    TOKEN_TRANSLATE = TOKEN_TRANSLATE
+else:
+    TOKEN_TG = os.environ['TOKEN_TG']
+    header_api = {"apikey": os.environ["apikey"]}
+    my_redis = redis.Redis(host=os.environ['redis_host'],
+                           port=10181,
+                           password=os.environ['redis_password'])
 
 
 # Список тикеров отображаемых по умолчанию.
 default_tickers = ('RUB', 'USD', 'EUR', 'BTC', 'CNY', 'INR', 'CHF', 'GBP')
 
-# url_list = "https://ru.wikipedia.org/wiki/%D0%A1%D0%BF%D0%B8%D1%81%D0%BE%D0%BA_" \
-#            "%D1%81%D1%83%D1%89%D0%B5%D1%81%D1%82%D0%B2%D1%83%D1%8E%D1%89%D0%B8%D1%85_" \
-#            "%D0%B2%D0%B0%D0%BB%D1%8E%D1%82"
-
-# url_list = "https://marat2010.github.io/SkillFactory_module_A3_Safiullin/bot.html"
-
 url_list = "https://marat2010.ru/exch/"
+url_symbols = "https://api.apilayer.com/exchangerates_data/symbols"
+url_convert = "https://api.apilayer.com/exchangerates_data/convert?to={}&from={}&amount={}"
+url_translate = "https://api.apilayer.com/language_translation/translate?target=ru"
 
 help_message = "  Обмен валюты.\n" \
                "Доступные команды:\n" \
@@ -66,11 +44,11 @@ help_start = "Бот обменного курса валют.\n" \
              "/help - Описание\n" \
              "/convert - Конвертер валют"
 
+
 # # --------------- Для BotFather, Ввод команд --------------------------
 # help - Описание
 # convert - Конвертер валют
 # default - Список валют по умолчанию
 # list - Список доступных валют и их коды
 # change - Изменить последние 4 валюты (пример: /change AED BYR IRR KGS)
-# # change AED BYR IRR KGS - Изменить последние 4 валюты
 # # ---------------------------------------------------------------------

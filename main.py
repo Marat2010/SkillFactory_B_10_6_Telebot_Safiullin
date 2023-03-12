@@ -1,15 +1,7 @@
-# import redis
-# from aiogram.utils import json
-# from redis.commands import json
-# import ujson
-# import logging
-# logging.basicConfig(level=logging.INFO)
-# Initialize bot and dispatcher
-
-from config import TOKEN_TG, help_start, help_message, default_tickers, url_list, headers
+from config import TOKEN_TG, help_start, help_message, default_tickers, url_list
 from aiogram import Bot, Dispatcher, executor, types
 
-from utils import Convertor, Chat, digit_check, ConvertException, red
+from utils import Convertor, Chat, digit_check, input_str_check, ConvertException
 from keyboards import kb_numpad, kb_currency, kb_result
 
 bot = Bot(token=TOKEN_TG)
@@ -25,8 +17,6 @@ async def process_start_command(message: types.Message):
                    'tickers': default_tickers,
                    'currencies': Convertor.get_currencies(),
                    'kb_currency': kb_currency(),
-                   # 'old_input_str': '',
-                   # 'result': []
                    }
     Chat.set_chat_data(message.chat.id, chat_values)
 
@@ -113,7 +103,7 @@ async def callback_func(callback_query: types.CallbackQuery):
             if from_ticker == to_ticker:
                 converted_sum = f" Валюты должны быть разными!!!"
             else:
-                # converted_sum = 173123.45113
+                # converted_sum = 173123.45113  # Для тестов чтобы без запросов
                 converted_sum = Convertor.get_price(num, from_ticker, to_ticker)
 
                 converted_sum = f"{converted_sum: _.2f}"
@@ -121,7 +111,6 @@ async def callback_func(callback_query: types.CallbackQuery):
 
             converted_text = f"{sh_input_str}  {from_ticker} ({currencies[from_ticker]})  =" \
                              f"  {converted_sum}  {to_ticker} ({currencies[to_ticker]})\n"
-                             # f"  {converted_sum}  {to_ticker} ({currencies[to_ticker]})\n"
 
             settings['result'] = [sh_input_str, from_ticker, converted_sum, to_ticker]
 
@@ -199,7 +188,24 @@ async def list_currencies(message: types.Message):
 @dp.message_handler(content_types=['text'])
 async def currency_command(message: types.Message):
     print(f" xxx=== ЭТТО TEXT ==xxx {message} ")
-    # pass
+    data_out = input_str_check(message.text)
+    tickers = ['/change', data_out[2], data_out[4]]
+
+    # Convertor.update_tickers()
+    chat_tickers, change_tic = Convertor.update_tickers(message.chat.id, tickers)
+
+    chat_values = {
+                   'tickers': chat_tickers,
+                   'currencies': Convertor.get_currencies(chat_tickers),
+                   "kb_currency": kb_currency(chat_tickers)
+                   }
+    Chat.set_chat_data(message.chat.id, chat_values)
+
+    print(f"==data_out= Изменены две валюты =: {change_tic}")
+    print(f"==data_out==: {data_out}")
+
+    await message.answer(f"==Изменены две валюты==: ({change_tic})")
+    await message.answer(f"==data_out==: ({data_out})")
 
 
 if __name__ == '__main__':
@@ -208,6 +214,16 @@ if __name__ == '__main__':
 
 
 # --------------------------------------------------------------
+# --------------------------------------------------------------
+# --------------------------------------------------------------
+# --------------------------------------------------------------
+# import redis
+# from aiogram.utils import json
+# from redis.commands import json
+# import ujson
+# import logging
+# logging.basicConfig(level=logging.INFO)
+# Initialize bot and dispatcher
 # --------------------------------------------------------------
 # converted_sum = digit_check(converted_sum)[1]
 # print(f"==CONVERTed_sum =: {converted_sum}")

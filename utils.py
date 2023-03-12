@@ -1,15 +1,12 @@
 import requests
 from aiogram.utils import json
-from config import headers, default_tickers
+from config import header_api, default_tickers
 from config import my_redis as red
+from config import url_symbols, url_convert, url_translate
+import re
 # import ujson
 # import translators as ts
 # import translators.server as tss
-
-url_symbols = "https://api.apilayer.com/exchangerates_data/symbols"
-url_translate = "https://api.apilayer.com/language_translation/translate?target=ru"
-# url_convert = "https://api.apilayer.com/exchangerates_data/convert?to={RUB}&from={EUR}&amount={300}"
-url_convert = "https://api.apilayer.com/exchangerates_data/convert?to={}&from={}&amount={}"
 
 
 class ConvertException(Exception):
@@ -71,7 +68,7 @@ class Convertor:
     @staticmethod
     def get_price(amount, from_ticker, to_ticker):
         url_price = url_convert.format(to_ticker, from_ticker, amount)
-        response = requests.request("GET", url_price, headers=headers)
+        response = requests.request("GET", url_price, headers=header_api)
         status_code = response.status_code
 
         if status_code != 200:
@@ -88,7 +85,7 @@ class Convertor:
         """
         Получение всех валют: тикеров и названия на англ.
         """
-        response = requests.request("GET", url_symbols, headers=headers)
+        response = requests.request("GET", url_symbols, headers=header_api)
         status_code = response.status_code
         if status_code != 200:
             raise ConvertException(f"API конвертор: плохой ответ ( не {status_code} !!!)")
@@ -101,27 +98,6 @@ class Convertor:
             json.dump(symbols, f, indent=4, ensure_ascii=False)
 
         return symbols
-
-# ------------------------------------
-# def digit_check(s: str) -> str:
-#     try:
-#         float(s)
-#         print("===1===")
-#     except ValueError:
-#         print("===2===")
-#         return f"= NO FLOAT =: {s}"
-#
-#     try:
-#         int(s)
-#         s = f"{int(s): _}"
-#         print("===3===")
-#     except ValueError:
-#         s = f"{float(s): _.2f}"
-#         print("===4===")
-#         return s
-#
-#     return s
-# ------------------------------------
 
 
 def digit_check(s: str) -> tuple:
@@ -137,12 +113,56 @@ def digit_check(s: str) -> tuple:
             s_out = f"{int(dot[0]):_}"
 
             s_out += '.' + dot[1]
-            # if len(dot[1]) > 4:
             if len(dot[1]) == 5:
                 s_out += " - Совсем с ума .. 🤪, копейки вводить 😂😂😂  "
 
-    print(f"==DIGIT=={n}==, =={s_out}==")
     return n, s_out
+
+
+def input_str_check(s: str) -> tuple:
+    input_str, from_ticker, to_ticker = s.split()
+
+    num, str_out = digit_check(input_str)  # num: число или False, str_out: строка чисел для вывода
+
+    if num:
+        sh_input_num = str_out
+    else:
+        sh_input_num = f"{input_str}  -  Это не число!!!"
+        return num, sh_input_num  # Выход, чтобы дальше не считать
+
+    # Проверка тикеров
+    # ------------------------------------------
+    with open('symbols_rus.json', 'r') as f_curr:
+        all_currencies = json.load(f_curr)
+
+    from_tick = all_currencies.get(from_ticker.upper())
+    to_tick = all_currencies.get(to_ticker.upper())
+    print(f"===Проверка тикеров==: {from_ticker}, {to_ticker}")
+
+    if not from_tick:
+        for t, c in all_currencies.items():  # (TND, Тунисский динар)
+            if re.match(from_ticker.lower(), c.lower()):
+                print("======= from_ticker === ", t, '==', c)
+                from_ticker = t.upper()
+
+    if not to_tick:
+        for t, c in all_currencies.items():  # (TND, Тунисский динар)
+            if re.match(to_ticker.lower(), c.lower()):
+                print("======= to_ticker === ", t, '==', c)
+                to_ticker = t.upper()
+
+    print(f"======= from_ticker: {from_ticker} ===== to_ticker: {to_ticker} ===")
+
+    # ------------------------------------------
+
+    if from_ticker == to_ticker:
+        converted_sum = f" Валюты должны быть разными!!!"
+    else:
+        converted_sum = 173123.45113
+        # converted_sum = Convertor.get_price(num, from_ticker, to_ticker)
+        converted_sum = f"{converted_sum: _.2f}"
+
+    return num, sh_input_num, from_ticker, converted_sum, to_ticker
 
 
 # ________________________________________________________
@@ -171,6 +191,31 @@ if __name__ == '__main__':
     #                             # }
 
 
+# _____________________________________________________________
+# ------------------------------------
+# def digit_check(s: str) -> str:
+#     try:
+#         float(s)
+#         print("===1===")
+#     except ValueError:
+#         print("===2===")
+#         return f"= NO FLOAT =: {s}"
+#
+#     try:
+#         int(s)
+#         s = f"{int(s): _}"
+#         print("===3===")
+#     except ValueError:
+#         s = f"{float(s): _.2f}"
+#         print("===4===")
+#         return s
+#
+#     return s
+# ------------------------------------
+    # sh_input_str = str_out if num else f"{input_str}  -  Это не число!!!"
+# _____________________________________________________________
+# _____________________________________________________________
+# re.match(r'Analytics', 'AV Analytics Vidhya AV')
 # _____________________________________________________________
     # def get_price(base, sym, amount):
 

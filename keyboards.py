@@ -1,16 +1,10 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, \
-    ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import default_tickers
 from utils import Convertor
 
 
-# def get_currencies(tickers: list = default_tickers):
-#     return Convertor().get_currencies(tickers)
-
-
 def kb_keypad():
     keypad = InlineKeyboardMarkup(row_width=4, one_time_keyboard=True)
-    # keypad = InlineKeyboardMarkup(row_width=4)
 
     keypad.row(InlineKeyboardButton('1⃣', callback_data='1'),
                InlineKeyboardButton('2️⃣', callback_data='2'),
@@ -43,7 +37,6 @@ def kb_currency(tickers: tuple = default_tickers):
     t = [*dc]  # Tickers ['RUB', 'USD', 'EUR', ..]
 
     kb_curr = InlineKeyboardMarkup(row_width=2, one_time_keyboard=True)
-    # kb_curr = InlineKeyboardMarkup(row_width=2)
 
     kb_curr.row(InlineKeyboardButton(f"{t[0]}: {dc[t[0]]}", callback_data=f"{t[0]}"),
                 InlineKeyboardButton(f"{t[1]}: {dc[t[1]]}", callback_data=f"{t[1]}"))
@@ -68,7 +61,7 @@ def kb_result(result: str = "Нет данных = Нет данных"):
     kb_res.row(InlineKeyboardButton("Ввод новых данных", callback_data=f"New"))
     return kb_res
 
-# _________________________________________________________
-# _________________________________________________________
-# InlineKeyboardButton('az', switch_inline_query_current_chat='sas' ,callback_data='az'),
-# _________________________________________________________
+
+# ___________________________________________________________
+#   ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+# ___________________________________________________________
