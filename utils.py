@@ -1,29 +1,87 @@
 import requests
 from aiogram.utils import json
-# import ujson
-
 from config import headers, default_tickers
-
+from config import my_redis as red
+# import ujson
 # import translators as ts
 # import translators.server as tss
 
 url_symbols = "https://api.apilayer.com/exchangerates_data/symbols"
 url_translate = "https://api.apilayer.com/language_translation/translate?target=ru"
+# url_convert = "https://api.apilayer.com/exchangerates_data/convert?to={RUB}&from={EUR}&amount={300}"
+url_convert = "https://api.apilayer.com/exchangerates_data/convert?to={}&from={}&amount={}"
 
 
 class ConvertException(Exception):
     pass
 
 
-class Convertor:
-    def __init__(self):
-        self.default_currencies = {}  # Словарь отображаемых валют {"RUB": "Российский Рубль", "USD": "Доллар Сша",..}
-        self.tickers = default_tickers  # Тикеры ['RUB', 'USD',..]
-        # self.default_currencies = self.get_default_currencies()  # Словарь отображаемых валют на русском
+class Chat:
+    @staticmethod
+    def get_chat_data(chat_id: int) -> dict:
+        chat_id = "chat_id_" + str(chat_id)  # Вид ключа ('chat_id_241462113')
+        if not red.keys(chat_id):
+            return {}
+        data = json.loads(red.get(chat_id))
+        return data
 
     @staticmethod
-    def get_price(base, sym, amount):
-        pass
+    def set_chat_data(chat_id: int, data: dict) -> dict:
+        settings = Chat.get_chat_data(chat_id)
+
+        chat_id = "chat_id_" + str(chat_id)
+        settings.update(data)  # Обновление данных
+        if data.get('kb_currency'):
+            settings['kb_currency'] = str(data['kb_currency'])
+
+        red.set(chat_id, json.dumps(settings))
+        return settings
+
+
+class Convertor:
+
+    @staticmethod
+    def get_currencies(tickers: tuple = default_tickers) -> dict:
+        """
+        Получение словаря отображаемых валют (8 штук) в зависимости от списка тикеров.
+        {"RUB": "Российский Рубль", "USD": "Доллар Сша",..}
+        """
+
+        with open('symbols_rus.json', 'r') as f_curr:
+            all_currencies = json.load(f_curr)
+
+        currencies = {t: all_currencies[t] for t in tickers}
+        return currencies
+
+    @staticmethod
+    def update_tickers(chat_id: int, tickers):
+        with open('symbols_rus.json', 'r') as f_tickers:
+            all_currencies = json.load(f_tickers)
+
+        chat_tickers = list(Chat.get_chat_data(chat_id)['tickers'])
+        change_tic = [t.upper() for t in tickers[1:5]]  # ['/change', 'AED', 'KGS', 'IRR', 'KGS']
+        tickers = [t for t in change_tic if (t in all_currencies.keys()) and (t not in chat_tickers)]
+
+        chat_tickers = chat_tickers[:len(chat_tickers)-len(tickers)]
+        chat_tickers.extend(tickers)
+        chat_tickers = tuple(chat_tickers)
+
+        return chat_tickers, tickers
+
+    @staticmethod
+    def get_price(amount, from_ticker, to_ticker):
+        url_price = url_convert.format(to_ticker, from_ticker, amount)
+        response = requests.request("GET", url_price, headers=headers)
+        status_code = response.status_code
+
+        if status_code != 200:
+            raise ConvertException(f"API конвертор: плохой ответ ( не {status_code} !!!)")
+        try:
+            price = json.loads(response.content)
+        except KeyError as e:
+            raise ConvertException(f"API конвертор: не может получить цены валют ({e})")
+
+        return price['result']
 
     @staticmethod
     def get_symbols() -> dict:
@@ -44,44 +102,117 @@ class Convertor:
 
         return symbols
 
-    def get_default_currencies(self, tickers: list = default_tickers) -> dict:
-        """
-        Получение словаря отображаемых валют (8 штук) в зависимости от списка тикеров.
-        {"RUB": "Российский Рубль", "USD": "Доллар Сша",..}
-        """
+# ------------------------------------
+# def digit_check(s: str) -> str:
+#     try:
+#         float(s)
+#         print("===1===")
+#     except ValueError:
+#         print("===2===")
+#         return f"= NO FLOAT =: {s}"
+#
+#     try:
+#         int(s)
+#         s = f"{int(s): _}"
+#         print("===3===")
+#     except ValueError:
+#         s = f"{float(s): _.2f}"
+#         print("===4===")
+#         return s
+#
+#     return s
+# ------------------------------------
 
-        with open('symbols_rus.json', 'r') as f_tickers:
-            currencies = json.load(f_tickers)
 
-        for t in tickers:
-            self.default_currencies[t] = currencies[t]
+def digit_check(s: str) -> tuple:
+    n = False
+    s_out = False
+    if s.replace('_', '').replace('.', '', 1).isdigit():
+        try:
+            n = int(s)
+            s_out = f"{int(s):_}"
+        except ValueError:
+            n = float(s)
+            dot = s.split('.')  # Отдельная обработка целой и вещ. части
+            s_out = f"{int(dot[0]):_}"
 
-        return self.default_currencies
+            s_out += '.' + dot[1]
+            # if len(dot[1]) > 4:
+            if len(dot[1]) == 5:
+                s_out += " - Совсем с ума .. 🤪, копейки вводить 😂😂😂  "
 
-    def check_currency(self, tickers):
-        with open('symbols_rus.json', 'r') as f_tickers:
-            currencies = json.load(f_tickers)
+    print(f"==DIGIT=={n}==, =={s_out}==")
+    return n, s_out
 
-        tickers = [t.upper() for t in tickers[1:5]]  # ['/change', 'AED', 'KGS', 'IRR', 'KGS']
-        tickers = [t for t in tickers if (t in currencies.keys()) and (t not in self.tickers)]
 
-        self.tickers = self.tickers[:len(self.tickers)-len(tickers)]
-        self.tickers.extend(tickers)
-
-        return self.tickers, tickers
-
+# ________________________________________________________
     # Использовался ранее, для перевода названия валют.
     # @staticmethod
     # def translate(text):
     #     from_language, to_language = 'en', 'ru'
     #     result = tss.google(text, from_language, to_language)
     #     return result
+# ________________________________________________________
 
 
 if __name__ == '__main__':
+    pass
+    # amount = 300
+    # from_ticker = 'RUB'
+    # to_ticker = 'USD'
+    #
+    # rez = Convertor.get_price(amount, from_ticker, to_ticker)
+    # print("rez:", rez)  # rez: {
+    #                             # 'success': True,
+    #                             # 'query': {'from': 'RUB', 'to': 'USD', 'amount': 300},
+    #                             # 'info': {'timestamp': 1678413783, 'rate': 0.013184},
+    #                             # 'date': '2023-03-10',
+    #                             # 'result': 3.9552
+    #                             # }
+
+
+# _____________________________________________________________
+    # def get_price(base, sym, amount):
+
+# _____________________________________________________________
+# https://apilayer.com/marketplace/exchangerates_data-api?_gl=1*3mtuzh*_ga*MTA5NDQ3NzY4Ny4xNjc3NTM0Njg0*_ga_HGV43FGGVM*MTY3NzUzNDY4NC4xLjEuMTY3NzUzNDY5MS41My4wLjA.%3Fe=Sign+In&l=Success?e=Sign+In&l=Success
+# # _____________________________________________________________
+# import requests
+#
+# url = "https://api.apilayer.com/exchangerates_data/convert?to=RUB&from=EUR&amount=300"
+#
+# payload = {}
+# headers= {
+#   "apikey": "wr4DkR1tK5Klzvnsh61PWAVuxM8SxmSM"
+# }
+#
+# response = requests.request("GET", url, headers=headers, data = payload)
+#
+# status_code = response.status_code
+# result = response.text
+#
+# ---------result------------
+# {
+#   "date": "2023-03-10",
+#   "info": {
+#     "rate": 80.363442,
+#     "timestamp": 1678412522
+#   },
+#   "query": {
+#     "amount": 300,
+#     "from": "EUR",
+#     "to": "RUB"
+#   },
+#   "result": 24109.0326,
+#   "success": true
+# }
+
+# _____________________________________________________________
+# _____________________________________________________________
+# s_out = f"{float(s):_.2f}"
+# _____________________________________________________________
     # r = Convertor().get_default_currencies()
     # print("===R==", r)
-    pass
 
     # with open('symbols.json', 'r') as f:
     #     curr = ujson.load(f)
@@ -92,9 +223,49 @@ if __name__ == '__main__':
     # print(type(curr_lst), "==<>=", curr_lst)
     # rez = Convertor.get_default_currencies(curr_lst[0:10])
     # print("== ", type(rez), "--== ", rez)
+# _____________________________________________________________
+    # def __init__(self):
+    #     self.input_str = ''
+    #     self.old_input_str = ''
+    #     self.default_currencies = {}  # Словарь отображаемых валют {"RUB": "Российский Рубль", "USD": "Доллар Сша",..}
+    #     self.tickers = default_tickers  # Тикеры ['RUB', 'USD',..]
+    #     # self.de   fault_currencies = self.get_default_currencies()  # Словарь отображаемых валют на русском
 
+# _____________________________________________________________
+# for k in data:  # Обновление данных
+#     settings[k] = data[k]  # Необходимо перевести в строку для Redis
+# settings = {t: data[t] for t in data}
 
+# _____________________________________________________________
+# currencies = {}
+# for t in tickers:
+#     currencies[t] = all_currencies[t]
+# _____________________________________________________________
+# # settings.update(data)  # Обновление данных
+# _____________________________________________________________
+# input_str = red.hget(chat_id, 'input_str').decode("utf-8")
+# old_input_str = red.hget(chat_id, 'old_input_str').decode("utf-8")
+# tickers = red.hget(chat_id, 'tickers').decode("utf-8")
+# currencies = red.hget(chat_id, 'currencies').decode("utf-8")
+# kb_currency = red.hget(chat_id, 'kb_currency').decode("utf-8")
+#
+# data = {
+#     'input_str': input_str,
+#     'old_input_str': old_input_str,
+#     'tickers': tickers,
+#     'currencies': currencies,
+#     'kb_currency': kb_currency
+# }
 
+# Второй способ загрузки и выгрузки через Json:
+# red.set(chat_id, json.dumps(data))
+# ----------------------
+# data = red.hset(chat_id, mapping=settings)
+
+# Второй способ загрузки и выгрузки через Json:
+# red.set(chat_id, json.dumps(settings))
+# settings = json.loads(red.get(chat_id))
+# _____________________________________________________________
 # _____________________________________________________________
 #     @staticmethod  # Old get_default_currencies
 #     def get_default_currencies(currencies=default_currencies):
