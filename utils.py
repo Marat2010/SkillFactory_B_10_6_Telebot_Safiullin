@@ -4,7 +4,6 @@ from config import header_api, default_tickers
 from config import my_redis as red
 from config import url_symbols, url_convert, url_translate
 import re
-# import ujson
 # import translators as ts
 # import translators.server as tss
 
@@ -23,7 +22,7 @@ class Chat:
         return data
 
     @staticmethod
-    def set_chat_data(chat_id: int, data: dict) -> dict:
+    def update_chat_data(chat_id: int, data: dict) -> dict:
         settings = Chat.get_chat_data(chat_id)
 
         chat_id = "chat_id_" + str(chat_id)
@@ -38,22 +37,40 @@ class Chat:
 class Convertor:
 
     @staticmethod
+    def get_all_currencies() -> dict:
+        """
+        Получение словаря всех валют.
+        {"AED": "Дирхам ОАЭ", "AFN": "Афганский афгани", ..}
+        """
+        if not red.get('all_currencies'):
+            with open('symbols_rus.json', 'r') as f_curr:
+                all_currencies = json.load(f_curr)
+                red.set('all_currencies', json.dumps(all_currencies))
+        else:
+            all_currencies = json.loads(red.get('all_currencies'))
+        return all_currencies
+
+    @staticmethod
     def get_currencies(tickers: tuple = default_tickers) -> dict:
         """
         Получение словаря отображаемых валют (8 штук) в зависимости от списка тикеров.
         {"RUB": "Российский Рубль", "USD": "Доллар Сша",..}
         """
-
-        with open('symbols_rus.json', 'r') as f_curr:
-            all_currencies = json.load(f_curr)
-
+        all_currencies = Convertor.get_all_currencies()
         currencies = {t: all_currencies[t] for t in tickers}
         return currencies
 
     @staticmethod
-    def update_tickers(chat_id: int, tickers):
-        with open('symbols_rus.json', 'r') as f_tickers:
-            all_currencies = json.load(f_tickers)
+    def update_tickers(chat_id: int, tickers) -> tuple:
+        """
+        Изменение списка тикеров отображаемых валют. Всего 8 штук.
+        Максимум можно изменить последние 4.
+        Возвращает:
+         chat_tickers - новый полный список тикеров
+         tickers - новые добавленные тикеры.
+        """
+
+        all_currencies = Convertor.get_all_currencies()
 
         chat_tickers = list(Chat.get_chat_data(chat_id)['tickers'])
         change_tic = [t.upper() for t in tickers[1:5]]  # ['/change', 'AED', 'KGS', 'IRR', 'KGS']
@@ -63,22 +80,32 @@ class Convertor:
         chat_tickers.extend(tickers)
         chat_tickers = tuple(chat_tickers)
 
+        # Обновление данных чата
+        chat_values = {'tickers': chat_tickers,
+                       'currencies': Convertor.get_currencies(chat_tickers),
+                       }
+        Chat.update_chat_data(chat_id, chat_values)
+
         return chat_tickers, tickers
 
     @staticmethod
     def get_price(amount, from_ticker, to_ticker):
         url_price = url_convert.format(to_ticker, from_ticker, amount)
-        response = requests.request("GET", url_price, headers=header_api)
-        status_code = response.status_code
+        try:
+            response = requests.request("GET", url_price, headers=header_api)
+            status_code = response.status_code
+        except requests.exceptions.ConnectionError as e:
+            raise ConvertException(f"😢 Нет соединения с API конвертора !!!")
 
         if status_code != 200:
-            raise ConvertException(f"API конвертор: плохой ответ ( не {status_code} !!!)")
+            raise ConvertException(f"😢 API конвертор: плохой ответ !!! ( status_code: {status_code} )")
         try:
             price = json.loads(response.content)
+            price = price['result']
         except KeyError as e:
-            raise ConvertException(f"API конвертор: не может получить цены валют ({e})")
+            raise ConvertException(f"😢 API конвертор: не может получить результат. ({e})")
 
-        return price['result']
+        return price
 
     @staticmethod
     def get_symbols() -> dict:
@@ -119,51 +146,75 @@ def digit_check(s: str) -> tuple:
     return n, s_out
 
 
-def input_str_check(s: str) -> tuple:
-    input_str, from_ticker, to_ticker = s.split()
+def ticker_check(ticker: str, all_currencies: dict) -> str:
+    """
+    Проверка и поиск тикеров валют
+    """
+    tick = all_currencies.get(ticker.upper())
 
-    num, str_out = digit_check(input_str)  # num: число или False, str_out: строка чисел для вывода
+    if tick:
+        tick = ticker.upper()
+    else:
+        for t, c in all_currencies.items():  # (TND, Тунисский динар)
+            if re.search(ticker.lower(), c.lower()):
+                tick = t.upper()
+                return tick  # выходим после первого нахождения
+    return tick
+
+
+def input_str_check(chat_id: int, s: str) -> dict:
+    """
+    Основная обработка входящей строки
+    """
+
+    try:
+        num_str, from_ticker, to_ticker = s.split()
+    except ValueError:
+        sh_input_num = "Неверное количество параметров!!!\n Должно быть число, и две валюты!"
+        return {'rez': False, 'converted_text': sh_input_num, 'change_tic': False}
+
+    num, str_out = digit_check(num_str)  # num: число или False, str_out: строка чисел для вывода
 
     if num:
         sh_input_num = str_out
     else:
-        sh_input_num = f"{input_str}  -  Это не число!!!"
-        return num, sh_input_num  # Выход, чтобы дальше не считать
+        sh_input_num = f"{num_str}  -  Это не число!!!"
+        return {'rez': False, 'converted_text': sh_input_num, 'change_tic': False}
 
-    # Проверка тикеров
-    # ------------------------------------------
-    with open('symbols_rus.json', 'r') as f_curr:
-        all_currencies = json.load(f_curr)
+    # -------- Проверка тикеров --------
+    all_currencies = Convertor.get_all_currencies()
 
-    from_tick = all_currencies.get(from_ticker.upper())
-    to_tick = all_currencies.get(to_ticker.upper())
-    print(f"===Проверка тикеров==: {from_ticker}, {to_ticker}")
-
+    from_tick = ticker_check(from_ticker, all_currencies)
+    to_tick = ticker_check(to_ticker, all_currencies)
+    change_tic = False  # Тикеры для замены
     if not from_tick:
-        for t, c in all_currencies.items():  # (TND, Тунисский динар)
-            if re.match(from_ticker.lower(), c.lower()):
-                print("======= from_ticker === ", t, '==', c)
-                from_ticker = t.upper()
-
-    if not to_tick:
-        for t, c in all_currencies.items():  # (TND, Тунисский динар)
-            if re.match(to_ticker.lower(), c.lower()):
-                print("======= to_ticker === ", t, '==', c)
-                to_ticker = t.upper()
-
-    print(f"======= from_ticker: {from_ticker} ===== to_ticker: {to_ticker} ===")
-
-    # ------------------------------------------
-
-    if from_ticker == to_ticker:
-        converted_sum = f" Валюты должны быть разными!!!"
+        num = False
+        converted_text = f"{from_ticker}  - Такой валюты нет!!! 🤪"
+    elif not to_tick:
+        num = False
+        converted_text = f"{to_ticker}  - Такой валюты нет!!! 🤪"
+    elif from_tick == to_tick:
+        num = False
+        converted_text = f" Валюты должны быть разными!!! 🤪"
     else:
-        converted_sum = 173123.45113
-        # converted_sum = Convertor.get_price(num, from_ticker, to_ticker)
-        converted_sum = f"{converted_sum: _.2f}"
+        try:
+            # converted_sum = 12345.678912  # Для теста, без конвертации.
+            converted_sum = Convertor.get_price(num, from_tick, to_tick)
+            converted_sum = f"{converted_sum: _.4f}"
+        except ConvertException as e:
+            converted_sum = f"{e}"
 
-    return num, sh_input_num, from_ticker, converted_sum, to_ticker
+        tickers = ['/change', from_tick, to_tick]
+        chat_tickers, change_tic = Convertor.update_tickers(chat_id, tickers)
+        result = [sh_input_num, from_tick, converted_sum, to_tick]
+        # Обновление данных чата
+        settings = Chat.update_chat_data(chat_id, {'result': result})
+        currencies = settings.get('currencies')
 
+        converted_text = f"{sh_input_num}  {from_tick} ({currencies[from_tick]})  =" \
+                         f"  {converted_sum}  {to_tick} ({currencies[to_tick]})\n"
+
+    return {'rez': num, 'converted_text': converted_text, 'change_tic': change_tic}
 
 # ________________________________________________________
     # Использовался ранее, для перевода названия валют.
@@ -177,6 +228,4 @@ def input_str_check(s: str) -> tuple:
 
 if __name__ == '__main__':
     pass
-
-
 

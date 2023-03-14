@@ -61,7 +61,3 @@ def kb_result(result: str = "Нет данных = Нет данных"):
     kb_res.row(InlineKeyboardButton("Ввод новых данных", callback_data=f"New"))
     return kb_res
 
-
-# ___________________________________________________________
-#   ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
-# ___________________________________________________________
